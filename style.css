@@ -1,0 +1,69 @@
+:root{--bg:#0b0f14;--card:#121821;--line:#1f2933;--tx:#e6ebf0;--mu:#8a96a3;--ac:#2b9dff;--ac2:#4dfcff;--ok:#2dd4bf;--bad:#f87171;--warn:#fbbf24}
+*{box-sizing:border-box;margin:0}
+body{font:14px/1.5 system-ui,"Segoe UI",Arial,sans-serif;background:var(--bg);color:var(--tx);display:flex;min-height:100vh}
+
+/* menu lateral */
+.side{width:210px;background:#080b0f;border-right:1px solid var(--line);padding:20px 12px;position:sticky;top:0;height:100vh}
+.brand{display:flex;align-items:center;justify-content:center;margin:0 0 24px 8px;padding:8px 0;background:transparent}
+.brand-logo{display:block;max-width:190px;width:100%;height:auto;background:transparent;filter:drop-shadow(0 0 12px rgba(43,157,255,.22))}
+.side button{display:block;width:100%;text-align:left;background:none;border:0;color:var(--mu);padding:10px 12px;border-radius:8px;cursor:pointer;font:inherit;margin-bottom:4px}
+.side button:hover{background:var(--card);color:var(--tx)}
+.side button.on{background:linear-gradient(90deg,#123a63,#0f2236);color:#fff;box-shadow:inset 3px 0 var(--ac2)}
+
+main{flex:1;padding:28px;min-width:0;max-width:1150px}
+h1{font-size:24px;margin-bottom:14px}
+h2{font-size:16px;margin:24px 0 10px;color:var(--ac2)}
+.mu{color:var(--mu);margin-bottom:6px}
+.tab{display:none}
+.tab.on{display:block}
+
+/* cartões de indicadores */
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:12px;margin:14px 0 18px}
+.kpi{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:14px 16px}
+.kpi span{display:block;color:var(--mu);font-size:12px;text-transform:uppercase;letter-spacing:.5px}
+.kpi b{font-size:28px;color:#fff;text-shadow:0 0 14px rgba(43,157,255,.55)}
+
+/* formulários */
+.row{display:flex;flex-wrap:wrap;gap:8px;margin:12px 0}
+input,select{background:#0e141b;border:1px solid var(--line);color:var(--tx);padding:9px 11px;border-radius:8px;font:inherit}
+input:focus,select:focus{outline:0;border-color:var(--ac);box-shadow:0 0 0 3px rgba(43,157,255,.2)}
+.grow{flex:1;min-width:160px}
+.busca{width:100%;margin-bottom:12px}
+.btn{background:linear-gradient(135deg,#1596ff,#0a5fd0);color:#fff;border:0;padding:9px 16px;border-radius:8px;cursor:pointer;font:inherit;font-weight:600}
+.btn:hover{filter:brightness(1.15)}
+.btn.sec{background:var(--card);border:1px solid var(--line);color:var(--tx)}
+.btn.sm{padding:4px 10px;font-size:12px}
+.btn:disabled{opacity:.35;cursor:not-allowed}
+
+/* tabelas */
+.wrap{overflow-x:auto;background:var(--card);border:1px solid var(--line);border-radius:12px}
+table{width:100%;border-collapse:collapse}
+th,td{padding:10px 12px;text-align:left;white-space:nowrap;border-bottom:1px solid var(--line)}
+th{color:var(--mu);font-size:12px;text-transform:uppercase;letter-spacing:.5px;background:#0e141b}
+tr:last-child td{border-bottom:0}
+td input[type=number]{width:84px;padding:5px 8px}
+.vazio{text-align:center;color:var(--mu);padding:22px}
+.pos{color:var(--ac2)}
+.neg{color:var(--bad)}
+
+/* selos de status */
+.b{padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600}
+.b.ok{background:rgba(45,212,191,.15);color:var(--ok)}
+.b.sobra{background:rgba(43,157,255,.15);color:var(--ac)}
+.b.falta{background:rgba(248,113,113,.15);color:var(--bad)}
+.b.n{background:#1a222c;color:var(--mu)}
+.b.low{background:rgba(251,191,36,.15);color:var(--warn)}
+
+.alertas{list-style:none;padding:0}
+.alertas li{background:var(--card);border-left:3px solid var(--warn);padding:9px 14px;border-radius:8px;margin-bottom:6px}
+
+.toast{position:fixed;right:20px;bottom:20px;background:#123a63;border:1px solid var(--ac);padding:10px 16px;border-radius:10px;opacity:0;transform:translateY(10px);transition:.25s;pointer-events:none}
+.toast.on{opacity:1;transform:none}
+
+@media(max-width:800px){
+  body{flex-direction:column}
+  .side{width:100%;height:auto;position:static;display:flex;gap:6px;overflow-x:auto;padding:10px}
+  .brand{display:flex;justify-content:center;margin:0 0 12px;text-align:center}
+  .side button{width:auto;white-space:nowrap}
+  main{padding:16px}
+}

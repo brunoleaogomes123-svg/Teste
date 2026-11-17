@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Tuzz - Controle de Estoque</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <aside class="side">
+    <div class="brand" aria-label="Tuzz Logística">
+      <img src="assets/logo-tuzz-logistica-empresarial-transparent.png" alt="Logo Tuzz Logística" class="brand-logo">
+    </div>
+    <button class="on" data-tab="painel">Painel</button>
+    <button data-tab="estoque">Estoque</button>
+    <button data-tab="mov">Movimentações</button>
+    <button data-tab="acur">Acuracidade</button>
+  </aside>
+
+  <main>
+    <!-- PAINEL -->
+    <section id="painel" class="tab on">
+      <h1>Painel</h1>
+      <div class="kpis">
+        <div class="kpi"><span>SKUs cadastrados</span><b id="k-sku">0</b></div>
+        <div class="kpi"><span>Unidades em estoque</span><b id="k-un">0</b></div>
+        <div class="kpi"><span>Abaixo do mínimo</span><b id="k-min">0</b></div>
+        <div class="kpi"><span>Acuracidade geral</span><b id="k-acur">—</b></div>
+      </div>
+      <h2>Alertas de reposição</h2>
+      <ul id="alertas" class="alertas"></ul>
+      <h2>Últimas movimentações</h2>
+      <div class="wrap"><table><thead><tr><th>Data</th><th>SKU</th><th>Tipo</th><th>Qtd</th><th>Observação</th></tr></thead><tbody id="t-ultimas"></tbody></table></div>
+    </section>
+
+    <!-- ESTOQUE -->
+    <section id="estoque" class="tab">
+      <h1>Estoque</h1>
+      <form id="f-prod" class="row">
+        <input id="p-sku" placeholder="Código" required>
+        <input id="p-desc" placeholder="Descrição" required class="grow">
+        <input id="p-end" placeholder="Endereço (ex.: R01/01/114)">
+        <input id="p-saldo" type="number" min="0" placeholder="Saldo" required>
+        <input id="p-min" type="number" min="0" placeholder="Mínimo" required>
+        <button class="btn">Adicionar produto</button>
+      </form>
+      <input id="busca" class="busca" placeholder="Buscar por código, descrição ou endereço...">
+      <div class="wrap"><table><thead><tr><th>Código</th><th>Descrição</th><th>Endereço</th><th>Saldo</th><th>Mínimo</th><th>Situação</th><th></th></tr></thead><tbody id="t-estoque"></tbody></table></div>
+    </section>
+
+    <!-- MOVIMENTAÇÕES -->
+    <section id="mov" class="tab">
+      <h1>Movimentações</h1>
+      <form id="f-mov" class="row">
+        <select id="m-prod" required></select>
+        <select id="m-tipo"><option>Entrada</option><option>Saída</option></select>
+        <input id="m-qtd" type="number" min="1" placeholder="Quantidade" required>
+        <input id="m-obs" placeholder="Observação (NF, pedido...)" class="grow">
+        <button class="btn">Registrar</button>
+      </form>
+      <div class="wrap"><table><thead><tr><th>Data</th><th>SKU</th><th>Tipo</th><th>Qtd</th><th>Observação</th></tr></thead><tbody id="t-mov"></tbody></table></div>
+    </section>
+
+    <!-- ACURACIDADE -->
+    <section id="acur" class="tab">
+      <h1>Acuracidade</h1>
+      <p class="mu">Informe a contagem física. Onde houver divergência com o saldo do sistema, use "Ajustar" para reparar o saldo e registrar o motivo.</p>
+      <div class="kpis">
+        <div class="kpi"><span>Acuracidade por item</span><b id="a-itens">—</b></div>
+        <div class="kpi"><span>Acuracidade por unidade</span><b id="a-un">—</b></div>
+        <div class="kpi"><span>Itens contados</span><b id="a-cont">0</b></div>
+        <div class="kpi"><span>Com divergência</span><b id="a-div">0</b></div>
+      </div>
+      <div class="row">
+        <select id="motivo">
+          <option>Erro de lançamento</option><option>Avaria</option><option>Extravio / furto</option>
+          <option>Erro de endereçamento</option><option>Erro de recebimento</option><option>Outro</option>
+        </select>
+        <button id="b-todas" class="btn">Ajustar todas as divergências</button>
+        <button id="b-csv" class="btn sec">Exportar divergências (CSV)</button>
+        <button id="b-limpar" class="btn sec">Nova contagem</button>
+      </div>
+      <div class="wrap"><table><thead><tr><th>SKU</th><th>Descrição</th><th>Endereço</th><th>Saldo (sistema)</th><th>Físico</th><th>Divergência</th><th>Acurac.</th><th>Status</th><th></th></tr></thead><tbody id="t-acur"></tbody></table></div>
+      <h2>Histórico de ajustes</h2>
+      <div class="wrap"><table><thead><tr><th>Data</th><th>SKU</th><th>Ajuste</th><th>Detalhe</th></tr></thead><tbody id="t-ajustes"></tbody></table></div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+  <script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,244 @@
+/* ===== Tuzz - controle de estoque com módulo de Acuracidade ===== */
+const KEY = 'logistock_v1';
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const now = () => new Date().toLocaleString('pt-BR');
+const pct = v => v == null ? '—' : v.toFixed(1).replace('.', ',') + '%';
+const sign = n => (n > 0 ? '+' : '') + n;
+const tr = (...c) => '<tr>' + c.map(x => '<td>' + x + '</td>').join('') + '</tr>';
+const vazio = (n, t) => `<tr><td colspan="${n}" class="vazio">${t}</td></tr>`;
+
+/* ---------- dados ---------- */
+let persistenciaHabilitada = true;
+let alertaPersistencia = '';
+function dadosIniciais() {
+  return {
+    produtos: [
+      {id:1, sku:'CX-001', desc:'Caixa de papelão 40x30', end:'R01/01/114', saldo:120, min:40, fisico:120},
+      {id:2, sku:'FT-014', desc:'Fita adesiva 48mm', end:'R01/01/115', saldo:85, min:30, fisico:82},
+      {id:3, sku:'FL-203', desc:'Filme stretch 500mm', end:'R01/01/116', saldo:24, min:30, fisico:30},
+      {id:4, sku:'ET-330', desc:'Etiqueta térmica 100x150', end:'R01/01/117', saldo:300, min:100, fisico:null},
+      {id:5, sku:'LV-007', desc:'Luva de segurança M', end:'R01/01/118', saldo:60, min:20, fisico:57}
+    ],
+    movs: []
+  };
+}
+function bancoValido(d) {
+  return d && Array.isArray(d.produtos) && Array.isArray(d.movs)
+    && d.produtos.every(p => p && Number.isFinite(p.id) && typeof p.sku === 'string'
+      && typeof p.desc === 'string' && typeof p.end === 'string'
+      && Number.isFinite(p.saldo) && Number.isFinite(p.min)
+      && (p.fisico == null || Number.isFinite(p.fisico)))
+    && d.movs.every(m => m && typeof m.data === 'string' && typeof m.sku === 'string'
+      && typeof m.tipo === 'string' && Number.isFinite(m.qtd) && typeof m.obs === 'string');
+}
+function carregar() {
+  let dadosSalvos;
+  try {
+    dadosSalvos = localStorage.getItem(KEY);
+  } catch (e) {
+    persistenciaHabilitada = false;
+    alertaPersistencia = 'Não foi possível acessar o armazenamento local. As alterações não serão salvas.';
+    return dadosIniciais();
+  }
+  if (dadosSalvos === null) return dadosIniciais();
+
+  try {
+    const d = JSON.parse(dadosSalvos);
+    if (bancoValido(d)) return d;
+  } catch (e) {
+    alertaPersistencia = 'Os dados salvos estão inválidos. Eles foram preservados, mas as alterações não serão salvas.';
+    persistenciaHabilitada = false;
+    return dadosIniciais();
+  }
+
+  alertaPersistencia = 'Os dados salvos têm formato inválido. Eles foram preservados, mas as alterações não serão salvas.';
+  persistenciaHabilitada = false;
+  return dadosIniciais();
+}
+let db = carregar();
+function salvar() {
+  if (!persistenciaHabilitada) return;
+  try {
+    localStorage.setItem(KEY, JSON.stringify(db));
+  } catch (e) {
+    persistenciaHabilitada = false;
+    aviso('Não foi possível salvar os dados no armazenamento local.');
+  }
+}
+const achar = id => db.produtos.find(p => p.id === id);
+
+function aviso(msg) {
+  const t = $('#toast'); t.textContent = msg; t.classList.add('on');
+  clearTimeout(aviso.t); aviso.t = setTimeout(() => t.classList.remove('on'), 2600);
+}
+
+/* ---------- cálculo de acuracidade ---------- */
+function acurItem(p) {
+  if (p.fisico == null) return null;
+  const d = Math.abs(p.fisico - p.saldo);
+  if (!d) return 100;
+  return p.saldo ? Math.max(0, 100 - d / p.saldo * 100) : 0;
+}
+function stats() {
+  const c = db.produtos.filter(p => p.fisico != null);
+  const div = c.filter(p => p.fisico !== p.saldo);
+  const total = c.reduce((a, p) => a + p.saldo, 0);
+  const erro = c.reduce((a, p) => a + Math.abs(p.fisico - p.saldo), 0);
+  return {
+    c, div,
+    itens: c.length ? (c.length - div.length) / c.length * 100 : null,
+    un: c.length ? (total ? Math.max(0, 100 - erro / total * 100) : 100) : null
+  };
+}
+function statusAcur(p) {
+  if (p.fisico == null) return '<span class="b n">Sem contagem</span>';
+  const d = p.fisico - p.saldo;
+  if (!d) return '<span class="b ok">OK</span>';
+  return d > 0 ? `<span class="b sobra">Sobra ${sign(d)}</span>` : `<span class="b falta">Falta ${d}</span>`;
+}
+
+/* ---------- reparo de divergência ---------- */
+function ajustar(p, motivo) {
+  const d = p.fisico - p.saldo;
+  if (p.fisico == null || !d) return 0;
+  db.movs.unshift({data: now(), sku: p.sku, tipo: 'Ajuste', qtd: d,
+    obs: `Acuracidade (${motivo}): saldo ${p.saldo} → físico ${p.fisico}`});
+  p.saldo = p.fisico;
+  return 1;
+}
+
+/* ---------- telas ---------- */
+const movRow = m => tr(m.data, esc(m.sku), m.tipo,
+  `<span class="${m.qtd < 0 ? 'neg' : 'pos'}">${sign(m.qtd)}</span>`, esc(m.obs || ''));
+
+function renderPainel() {
+  const baixo = db.produtos.filter(p => p.saldo <= p.min);
+  $('#k-sku').textContent = db.produtos.length;
+  $('#k-un').textContent = db.produtos.reduce((a, p) => a + p.saldo, 0);
+  $('#k-min').textContent = baixo.length;
+  $('#k-acur').textContent = pct(stats().itens);
+  $('#alertas').innerHTML = baixo.length
+    ? baixo.map(p => `<li><b>${esc(p.sku)}</b> ${esc(p.desc)}: saldo ${p.saldo} (mínimo ${p.min})</li>`).join('')
+    : '<li style="border-color:var(--ok)">Nenhum produto abaixo do mínimo.</li>';
+  $('#t-ultimas').innerHTML = db.movs.slice(0, 6).map(movRow).join('') || vazio(5, 'Sem movimentações ainda.');
+}
+
+function renderEstoque() {
+  const q = $('#busca').value.trim().toLowerCase();
+  const lista = db.produtos.filter(p => (p.sku + p.desc + p.end).toLowerCase().includes(q));
+  $('#t-estoque').innerHTML = lista.map(p => tr(
+    '<b>' + esc(p.sku) + '</b>', esc(p.desc), esc(p.end || '—'), p.saldo, p.min,
+    p.saldo <= p.min ? '<span class="b low">Repor</span>' : '<span class="b ok">Normal</span>',
+    `<button class="btn sec sm" data-del="${p.id}">Excluir</button>`
+  )).join('') || vazio(7, 'Nenhum produto encontrado.');
+}
+
+function renderMov() {
+  const sel = $('#m-prod'), atual = sel.value;
+  sel.innerHTML = db.produtos.map(p => `<option value="${p.id}">${esc(p.sku)} - ${esc(p.desc)}</option>`).join('');
+  sel.value = db.produtos.some(p => String(p.id) === atual) ? atual : (db.produtos.length ? String(db.produtos[0].id) : '');
+  $('#t-mov').innerHTML = db.movs.slice(0, 60).map(movRow).join('') || vazio(5, 'Sem movimentações ainda.');
+}
+
+function renderAcur() {
+  const s = stats();
+  $('#a-itens').textContent = pct(s.itens);
+  $('#a-un').textContent = pct(s.un);
+  $('#a-cont').textContent = s.c.length;
+  $('#a-div').textContent = s.div.length;
+  $('#b-todas').disabled = !s.div.length;
+  $('#t-acur').innerHTML = db.produtos.map(p => {
+    const d = p.fisico == null ? null : p.fisico - p.saldo;
+    return tr(
+      '<b>' + esc(p.sku) + '</b>', esc(p.desc), esc(p.end || '—'), p.saldo,
+      `<input type="number" min="0" step="1" data-cnt="${p.id}" value="${p.fisico ?? ''}" placeholder="—">`,
+      d == null ? '—' : `<span class="${d < 0 ? 'neg' : d > 0 ? 'pos' : ''}">${sign(d)}</span>`,
+      pct(acurItem(p)), statusAcur(p),
+      `<button class="btn sm" data-adj="${p.id}" ${d ? '' : 'disabled'}>Ajustar</button> ` +
+      `<button class="btn sec sm" data-rec="${p.id}" ${p.fisico == null ? 'disabled' : ''}>Recontar</button>`
+    );
+  }).join('') || vazio(9, 'Cadastre produtos na aba Estoque.');
+  $('#t-ajustes').innerHTML = db.movs.filter(m => m.tipo === 'Ajuste').slice(0, 10)
+    .map(m => tr(m.data, esc(m.sku), `<span class="${m.qtd < 0 ? 'neg' : 'pos'}">${sign(m.qtd)}</span>`, esc(m.obs))).join('')
+    || vazio(4, 'Nenhum ajuste realizado.');
+}
+
+function render() { renderPainel(); renderEstoque(); renderMov(); renderAcur(); salvar(); }
+
+/* ---------- eventos ---------- */
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  if (b.dataset.tab) {
+    document.querySelectorAll('.side button').forEach(x => x.classList.toggle('on', x === b));
+    document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.id === b.dataset.tab));
+  } else if (b.dataset.del) {
+    const p = achar(+b.dataset.del);
+    if (p && confirm(`Excluir ${p.sku}?`)) { db.produtos = db.produtos.filter(x => x !== p); render(); aviso('Produto excluído.'); }
+  } else if (b.dataset.adj) {
+    const p = achar(+b.dataset.adj);
+    if (p && ajustar(p, $('#motivo').value)) { render(); aviso(`Saldo de ${p.sku} corrigido.`); }
+  } else if (b.dataset.rec) {
+    achar(+b.dataset.rec).fisico = null; render();
+  }
+});
+
+document.addEventListener('change', e => {
+  const i = e.target;
+  if (i.dataset.cnt) {
+    const v = i.value === '' ? null : Number(i.value);
+    if (v !== null && (!Number.isInteger(v) || v < 0)) {
+      aviso('A contagem deve ser um número inteiro igual ou maior que zero.');
+      renderAcur();
+      return;
+    }
+    achar(+i.dataset.cnt).fisico = v;
+    render();
+  }
+});
+$('#busca').addEventListener('input', renderEstoque);
+
+$('#f-prod').addEventListener('submit', e => {
+  e.preventDefault();
+  const sku = $('#p-sku').value.trim().toUpperCase();
+  if (db.produtos.some(p => p.sku === sku)) return aviso('SKU já cadastrado.');
+  db.produtos.push({id: Date.now(), sku, desc: $('#p-desc').value.trim(), end: $('#p-end').value.trim().toUpperCase(),
+    saldo: +$('#p-saldo').value, min: +$('#p-min').value, fisico: null});
+  e.target.reset(); render(); aviso('Produto adicionado.');
+});
+
+$('#f-mov').addEventListener('submit', e => {
+  e.preventDefault();
+  const p = achar(+$('#m-prod').value); if (!p) return aviso('Cadastre um produto primeiro.');
+  const q = +$('#m-qtd').value, tipo = $('#m-tipo').value;
+  if (tipo === 'Saída' && q > p.saldo) return aviso(`Saldo insuficiente (${p.saldo}).`);
+  p.saldo += tipo === 'Entrada' ? q : -q;
+  db.movs.unshift({data: now(), sku: p.sku, tipo, qtd: tipo === 'Entrada' ? q : -q, obs: $('#m-obs').value.trim()});
+  e.target.reset(); render(); aviso('Movimentação registrada.');
+});
+
+$('#b-todas').addEventListener('click', () => {
+  const lista = stats().div;
+  if (!lista.length || !confirm(`Ajustar ${lista.length} divergência(s) com o motivo "${$('#motivo').value}"?`)) return;
+  lista.forEach(p => ajustar(p, $('#motivo').value));
+  render(); aviso('Divergências corrigidas.');
+});
+
+$('#b-limpar').addEventListener('click', () => {
+  if (confirm('Limpar todas as contagens físicas para iniciar uma nova?')) { db.produtos.forEach(p => p.fisico = null); render(); }
+});
+
+$('#b-csv').addEventListener('click', () => {
+  const linhas = [['SKU', 'Descrição', 'Endereço', 'Saldo', 'Físico', 'Divergência']]
+    .concat(stats().div.map(p => [p.sku, p.desc, p.end, p.saldo, p.fisico, p.fisico - p.saldo]));
+  if (linhas.length === 1) return aviso('Sem divergências para exportar.');
+  const csv = '\ufeff' + linhas.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
+  const a = document.createElement('a');
+  const url = URL.createObjectURL(new Blob([csv], {type: 'text/csv;charset=utf-8'}));
+  a.href = url;
+  a.download = 'divergencias-acuracidade.csv'; a.click();
+  setTimeout(() => URL.revokeObjectURL(url), 1000);
+});
+
+render();
+if (alertaPersistencia) aviso(alertaPersistencia);

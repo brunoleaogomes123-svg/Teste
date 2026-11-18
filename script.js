@@ -1,7 +1,92 @@
 /* ===== Tuzz - controle de estoque com módulo de Acuracidade ===== */
 const KEY = 'logistock_v1';
 const $ = s => document.querySelector(s);
-const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+let currentUser = null;
+let resetToken = new URLSearchParams(location.hash.slice(1)).get('reset');
+
+async function api(url, options = {}) {
+  const method = (options.method || 'GET').toUpperCase();
+  const headers = {...options.headers};
+  if (method !== 'GET' && method !== 'HEAD') {
+    const csrfResponse = await fetch('/api/csrf-token');
+    const csrfData = await csrfResponse.json();
+    if (!csrfResponse.ok) throw new Error(csrfData.error || 'Não foi possível validar a solicitação.');
+    headers['X-CSRFToken'] = csrfData.csrf_token;
+  }
+  const response = await fetch(url, {...options, method, headers});
+  const contentType = response.headers.get('content-type') || '';
+  const data = contentType.includes('application/json') ? await response.json() : {};
+  if (!response.ok) throw new Error(data.error || 'Não foi possível concluir a solicitação.');
+  return data;
+}
+
+function mensagem(id, texto, tipo = '') {
+  const el = $(id);
+  el.textContent = texto;
+  el.classList.toggle('error', tipo === 'error');
+  el.classList.toggle('success', tipo === 'success');
+}
+
+function mostrarLogin(tela = 'login') {
+  currentUser = null;
+  $('#app-shell').hidden = true;
+  $('#login-screen').hidden = false;
+  $('#login-panel').hidden = tela !== 'login';
+  $('#forgot-screen').hidden = tela !== 'forgot';
+  $('#reset-screen').hidden = tela !== 'reset';
+}
+
+async function mostrarApp(usuario, animarEntrada = false) {
+  currentUser = usuario;
+  $('#session-user').textContent = `${usuario.username}${usuario.is_admin ? ' · ADM' : ''}`;
+  $('#tab-usuarios').hidden = !usuario.is_admin;
+  $('#login-screen').hidden = true;
+  $('#app-shell').hidden = false;
+  $('#app-shell').inert = animarEntrada;
+  document.querySelectorAll('.side button[data-tab]').forEach(button => {
+    button.classList.toggle('on', button.dataset.tab === 'painel');
+  });
+  document.querySelectorAll('.tab').forEach(tab => tab.classList.toggle('on', tab.id === 'painel'));
+  render();
+  if (alertaPersistencia) aviso(alertaPersistencia);
+  if (animarEntrada) {
+    const entrada = $('#entry-animation');
+    $('#entry-user').textContent = usuario.username;
+    entrada.hidden = false;
+    entrada.setAttribute('aria-hidden', 'false');
+    const duracao = matchMedia('(prefers-reduced-motion: reduce)').matches ? 150 : 3100;
+    await new Promise(resolve => setTimeout(resolve, duracao));
+    entrada.hidden = true;
+    entrada.setAttribute('aria-hidden', 'true');
+    $('#app-shell').inert = false;
+  }
+}
+
+async function carregarUsuarios() {
+  const result = await api('/api/admin/users');
+  $('#t-usuarios').innerHTML = result.users.map(user => tr(
+    esc(user.username),
+    esc(user.email),
+    user.role === 'admin' ? 'ADM' : 'Usuário',
+    esc(new Date(user.created_at).toLocaleString('pt-BR'))
+  )).join('') || vazio(4, 'Nenhum usuário cadastrado.');
+}
+
+async function iniciar() {
+  if (resetToken) {
+    mostrarLogin('reset');
+    return;
+  }
+  try {
+    const sessao = await api('/api/me');
+    if (sessao.authenticated) await mostrarApp(sessao);
+    else mostrarLogin();
+  } catch (error) {
+    mostrarLogin();
+    mensagem('#login-message', `Não foi possível conectar ao servidor: ${error.message}`, 'error');
+  }
+}
 const now = () => new Date().toLocaleString('pt-BR');
 const pct = v => v == null ? '—' : v.toFixed(1).replace('.', ',') + '%';
 const sign = n => (n > 0 ? '+' : '') + n;
@@ -88,7 +173,7 @@ function stats() {
   return {
     c, div,
     itens: c.length ? (c.length - div.length) / c.length * 100 : null,
-    un: c.length ? (total ? Math.max(0, 100 - erro / total * 100) : 100) : null
+    un: c.length ? (total ? Math.max(0, 100 - erro / total * 100) : (erro ? 0 : 100)) : null
   };
 }
 function statusAcur(p) {
@@ -109,7 +194,7 @@ function ajustar(p, motivo) {
 }
 
 /* ---------- telas ---------- */
-const movRow = m => tr(m.data, esc(m.sku), m.tipo,
+const movRow = m => tr(esc(m.data), esc(m.sku), esc(m.tipo),
   `<span class="${m.qtd < 0 ? 'neg' : 'pos'}">${sign(m.qtd)}</span>`, esc(m.obs || ''));
 
 function renderPainel() {
@@ -160,18 +245,114 @@ function renderAcur() {
     );
   }).join('') || vazio(9, 'Cadastre produtos na aba Estoque.');
   $('#t-ajustes').innerHTML = db.movs.filter(m => m.tipo === 'Ajuste').slice(0, 10)
-    .map(m => tr(m.data, esc(m.sku), `<span class="${m.qtd < 0 ? 'neg' : 'pos'}">${sign(m.qtd)}</span>`, esc(m.obs))).join('')
+    .map(m => tr(esc(m.data), esc(m.sku), `<span class="${m.qtd < 0 ? 'neg' : 'pos'}">${sign(m.qtd)}</span>`, esc(m.obs))).join('')
     || vazio(4, 'Nenhum ajuste realizado.');
 }
 
 function render() { renderPainel(); renderEstoque(); renderMov(); renderAcur(); salvar(); }
 
 /* ---------- eventos ---------- */
+$('#login-form').addEventListener('submit', e => {
+  e.preventDefault();
+  mensagem('#login-message', 'Verificando acesso...');
+  api('/api/login', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      username: $('#login-user').value,
+      password: $('#login-password').value
+    })
+  }).then(usuario => mostrarApp(usuario, true)).then(() => e.target.reset()).catch(error => {
+    mensagem('#login-message', error.message, 'error');
+  });
+});
+
+$('#forgot-link').addEventListener('click', () => mostrarLogin('forgot'));
+document.querySelectorAll('.back-to-login').forEach(button => {
+  button.addEventListener('click', () => {
+    resetToken = null;
+    history.replaceState(null, '', location.pathname);
+    mostrarLogin();
+  });
+});
+
+$('#forgot-form').addEventListener('submit', e => {
+  e.preventDefault();
+  mensagem('#forgot-message', 'Enviando solicitação...');
+  api('/api/password-reset/request', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({email: $('#forgot-email').value})
+  }).then(result => {
+    mensagem('#forgot-message', result.message, 'success');
+  }).catch(error => {
+    mensagem('#forgot-message', error.message, 'error');
+  });
+});
+
+$('#reset-form').addEventListener('submit', e => {
+  e.preventDefault();
+  if ($('#reset-password').value !== $('#reset-confirm').value) {
+    mensagem('#reset-message', 'As senhas não conferem.', 'error');
+    return;
+  }
+  if (!resetToken) {
+    mensagem('#reset-message', 'Link de recuperação inválido ou expirado.', 'error');
+    return;
+  }
+  mensagem('#reset-message', 'Atualizando senha...');
+  api('/api/password-reset/confirm', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({token: resetToken, password: $('#reset-password').value})
+  }).then(result => {
+    resetToken = null;
+    history.replaceState(null, '', location.pathname);
+    e.target.reset();
+    mensagem('#reset-message', result.message, 'success');
+  }).catch(error => {
+    mensagem('#reset-message', error.message, 'error');
+  });
+});
+
+$('#create-user-form').addEventListener('submit', e => {
+  e.preventDefault();
+  mensagem('#admin-message', 'Criando usuário...');
+  api('/api/admin/users', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({
+      username: $('#new-username').value,
+      email: $('#new-email').value,
+      password: $('#new-password').value
+    })
+  }).then(async result => {
+    e.target.reset();
+    await carregarUsuarios();
+    mensagem('#admin-message', `Usuário ${result.username} criado.`, 'success');
+  }).catch(error => {
+    mensagem('#admin-message', error.message, 'error');
+  });
+});
+
 document.addEventListener('click', e => {
   const b = e.target.closest('button'); if (!b) return;
   if (b.dataset.tab) {
+    if (b.dataset.tab === 'usuarios' && !currentUser?.is_admin) return;
     document.querySelectorAll('.side button').forEach(x => x.classList.toggle('on', x === b));
     document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.id === b.dataset.tab));
+    if (b.dataset.tab === 'usuarios') {
+      mensagem('#admin-message', 'Carregando usuários...');
+      carregarUsuarios().then(() => mensagem('#admin-message', '')).catch(error => {
+        mensagem('#admin-message', error.message, 'error');
+      });
+    }
+  } else if (b.id === 'logout-button') {
+    api('/api/logout', {method: 'POST'}).then(() => {
+      mostrarLogin();
+      $('#login-form').reset();
+      mensagem('#login-message', 'Você saiu da sua conta.', 'success');
+    }).catch(error => aviso(error.message));
   } else if (b.dataset.del) {
     const p = achar(+b.dataset.del);
     if (p && confirm(`Excluir ${p.sku}?`)) { db.produtos = db.produtos.filter(x => x !== p); render(); aviso('Produto excluído.'); }
@@ -201,7 +382,7 @@ $('#busca').addEventListener('input', renderEstoque);
 $('#f-prod').addEventListener('submit', e => {
   e.preventDefault();
   const sku = $('#p-sku').value.trim().toUpperCase();
-  if (db.produtos.some(p => p.sku === sku)) return aviso('SKU já cadastrado.');
+  if (db.produtos.some(p => p.sku === sku)) return aviso('Código já cadastrado.');
   db.produtos.push({id: Date.now(), sku, desc: $('#p-desc').value.trim(), end: $('#p-end').value.trim().toUpperCase(),
     saldo: +$('#p-saldo').value, min: +$('#p-min').value, fisico: null});
   e.target.reset(); render(); aviso('Produto adicionado.');
@@ -229,7 +410,7 @@ $('#b-limpar').addEventListener('click', () => {
 });
 
 $('#b-csv').addEventListener('click', () => {
-  const linhas = [['SKU', 'Descrição', 'Endereço', 'Saldo', 'Físico', 'Divergência']]
+  const linhas = [['Código', 'Descrição', 'Endereço', 'Saldo', 'Físico', 'Divergência']]
     .concat(stats().div.map(p => [p.sku, p.desc, p.end, p.saldo, p.fisico, p.fisico - p.saldo]));
   if (linhas.length === 1) return aviso('Sem divergências para exportar.');
   const csv = '\ufeff' + linhas.map(l => l.map(c => `"${String(c).replace(/"/g, '""')}"`).join(';')).join('\n');
@@ -240,5 +421,4 @@ $('#b-csv').addEventListener('click', () => {
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 });
 
-render();
-if (alertaPersistencia) aviso(alertaPersistencia);
+iniciar();

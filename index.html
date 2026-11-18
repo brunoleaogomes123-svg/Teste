@@ -7,22 +7,79 @@
   <link rel="stylesheet" href="style.css">
 </head>
 <body>
-  <aside class="side">
-    <div class="brand" aria-label="Tuzz Logística">
-      <img src="assets/logo-tuzz-logistica-empresarial-transparent.png" alt="Logo Tuzz Logística" class="brand-logo">
+  <section id="login-screen" class="login-screen" aria-labelledby="login-title">
+    <div class="login-card">
+      <div class="login-brand">
+        <img src="assets/logo-tuzz-logistica-empresarial-transparent.png" alt="Tuzz Logística" class="login-logo">
+        <span class="login-tag">GESTÃO DE ESTOQUE</span>
+      </div>
+      <div id="login-panel" class="login-content">
+        <p class="login-eyebrow">BEM-VINDO(A)</p>
+        <h1 id="login-title">Acesse sua conta</h1>
+        <p class="login-description">Entre com seu usuário para acessar o painel de controle.</p>
+        <form id="login-form" class="login-fields" aria-labelledby="login-title">
+          <label for="login-user">Usuário</label>
+          <input id="login-user" type="text" placeholder="Digite seu usuário" autocomplete="username" required>
+          <label for="login-password">Senha</label>
+          <input id="login-password" type="password" placeholder="Digite sua senha" autocomplete="current-password" required>
+          <button id="login-submit" class="login-button" type="submit">Entrar <span aria-hidden="true">→</span></button>
+        </form>
+        <p id="login-message" class="login-message" role="status" aria-live="polite"></p>
+        <button id="forgot-link" class="text-link" type="button">Esqueci minha senha</button>
+        <p class="login-help">Acesso restrito a usuários autorizados.</p>
+      </div>
+      <div id="forgot-screen" class="login-content" hidden>
+        <p class="login-eyebrow">RECUPERAÇÃO DE ACESSO</p>
+        <h1>Esqueceu sua senha?</h1>
+        <p class="login-description">Informe o e-mail cadastrado para receber um link de redefinição.</p>
+        <form id="forgot-form" class="login-fields">
+          <label for="forgot-email">E-mail</label>
+          <input id="forgot-email" type="email" placeholder="voce@empresa.com" autocomplete="email" required>
+          <button class="login-button" type="submit">Enviar link <span aria-hidden="true">→</span></button>
+        </form>
+        <p id="forgot-message" class="login-message" role="status" aria-live="polite"></p>
+        <button class="text-link back-to-login" type="button">Voltar para o login</button>
+      </div>
+      <div id="reset-screen" class="login-content" hidden>
+        <p class="login-eyebrow">NOVA SENHA</p>
+        <h1>Redefina sua senha</h1>
+        <p class="login-description">Escolha uma senha com pelo menos 12 caracteres.</p>
+        <form id="reset-form" class="login-fields">
+          <label for="reset-password">Nova senha</label>
+          <input id="reset-password" type="password" autocomplete="new-password" minlength="12" required>
+          <label for="reset-confirm">Confirme a nova senha</label>
+          <input id="reset-confirm" type="password" autocomplete="new-password" minlength="12" required>
+          <button class="login-button" type="submit">Redefinir senha <span aria-hidden="true">→</span></button>
+        </form>
+        <p id="reset-message" class="login-message" role="status" aria-live="polite"></p>
+        <button class="text-link back-to-login" type="button">Voltar para o login</button>
+      </div>
+      <p class="login-footer">Tuzz Logística Empresarial</p>
     </div>
-    <button class="on" data-tab="painel">Painel</button>
-    <button data-tab="estoque">Estoque</button>
-    <button data-tab="mov">Movimentações</button>
-    <button data-tab="acur">Acuracidade</button>
-  </aside>
+  </section>
 
-  <main>
+  <div id="app-shell" hidden>
+    <aside class="side">
+      <div class="brand" aria-label="Logística">
+        <img src="assets/logo-tuzz-logistica-empresarial-transparent.png" alt="Logo Logística" class="brand-logo">
+      </div>
+      <button class="on" data-tab="painel">Painel</button>
+      <button data-tab="estoque">Estoque</button>
+      <button data-tab="mov">Movimentações</button>
+      <button data-tab="acur">Acuracidade</button>
+      <button id="tab-usuarios" data-tab="usuarios" hidden>Usuários (ADM)</button>
+      <div class="user-session">
+        <span id="session-user"></span>
+        <button id="logout-button" class="logout-button" type="button">Sair</button>
+      </div>
+    </aside>
+
+    <main>
     <!-- PAINEL -->
     <section id="painel" class="tab on">
       <h1>Painel</h1>
       <div class="kpis">
-        <div class="kpi"><span>SKUs cadastrados</span><b id="k-sku">0</b></div>
+        <div class="kpi"><span>Códigos cadastrados</span><b id="k-sku">0</b></div>
         <div class="kpi"><span>Unidades em estoque</span><b id="k-un">0</b></div>
         <div class="kpi"><span>Abaixo do mínimo</span><b id="k-min">0</b></div>
         <div class="kpi"><span>Acuracidade geral</span><b id="k-acur">—</b></div>
@@ -30,7 +87,7 @@
       <h2>Alertas de reposição</h2>
       <ul id="alertas" class="alertas"></ul>
       <h2>Últimas movimentações</h2>
-      <div class="wrap"><table><thead><tr><th>Data</th><th>SKU</th><th>Tipo</th><th>Qtd</th><th>Observação</th></tr></thead><tbody id="t-ultimas"></tbody></table></div>
+      <div class="wrap"><table><thead><tr><th>Data</th><th>Código</th><th>Tipo</th><th>Qtd</th><th>Observação</th></tr></thead><tbody id="t-ultimas"></tbody></table></div>
     </section>
 
     <!-- ESTOQUE -->
@@ -58,7 +115,7 @@
         <input id="m-obs" placeholder="Observação (NF, pedido...)" class="grow">
         <button class="btn">Registrar</button>
       </form>
-      <div class="wrap"><table><thead><tr><th>Data</th><th>SKU</th><th>Tipo</th><th>Qtd</th><th>Observação</th></tr></thead><tbody id="t-mov"></tbody></table></div>
+      <div class="wrap"><table><thead><tr><th>Data</th><th>Código</th><th>Tipo</th><th>Qtd</th><th>Observação</th></tr></thead><tbody id="t-mov"></tbody></table></div>
     </section>
 
     <!-- ACURACIDADE -->
@@ -80,11 +137,41 @@
         <button id="b-csv" class="btn sec">Exportar divergências (CSV)</button>
         <button id="b-limpar" class="btn sec">Nova contagem</button>
       </div>
-      <div class="wrap"><table><thead><tr><th>SKU</th><th>Descrição</th><th>Endereço</th><th>Saldo (sistema)</th><th>Físico</th><th>Divergência</th><th>Acurac.</th><th>Status</th><th></th></tr></thead><tbody id="t-acur"></tbody></table></div>
+      <div class="wrap"><table><thead><tr><th>Código</th><th>Descrição</th><th>Endereço</th><th>Saldo (sistema)</th><th>Físico</th><th>Divergência</th><th>Acurac.</th><th>Status</th><th></th></tr></thead><tbody id="t-acur"></tbody></table></div>
       <h2>Histórico de ajustes</h2>
-      <div class="wrap"><table><thead><tr><th>Data</th><th>SKU</th><th>Ajuste</th><th>Detalhe</th></tr></thead><tbody id="t-ajustes"></tbody></table></div>
+      <div class="wrap"><table><thead><tr><th>Data</th><th>Código</th><th>Ajuste</th><th>Detalhe</th></tr></thead><tbody id="t-ajustes"></tbody></table></div>
     </section>
-  </main>
+
+    <section id="usuarios" class="tab">
+      <h1>Usuários</h1>
+      <p class="mu">Somente o ADM pode criar contas. As novas contas têm acesso de usuário, sem permissões administrativas.</p>
+      <form id="create-user-form" class="row">
+        <input id="new-username" placeholder="Usuário (3 a 32 caracteres)" minlength="3" maxlength="32" required>
+        <input id="new-email" type="email" placeholder="E-mail" required>
+        <input id="new-password" type="password" placeholder="Senha (mínimo 12 caracteres)" minlength="12" required>
+        <button class="btn">Criar usuário</button>
+      </form>
+      <p id="admin-message" class="login-message" role="status" aria-live="polite"></p>
+      <div class="wrap"><table><thead><tr><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Criado em</th></tr></thead><tbody id="t-usuarios"></tbody></table></div>
+    </section>
+    </main>
+  </div>
+
+  <div id="entry-animation" class="entry-animation" hidden aria-hidden="true">
+    <div class="entry-ambient" aria-hidden="true"></div>
+    <div class="entry-door entry-door-left" aria-hidden="true"><span></span></div>
+    <div class="entry-door entry-door-right" aria-hidden="true"><span></span></div>
+    <div class="entry-cube entry-cube-one" aria-hidden="true"></div>
+    <div class="entry-cube entry-cube-two" aria-hidden="true"></div>
+    <div class="entry-cube entry-cube-three" aria-hidden="true"></div>
+    <div class="entry-content" role="status" aria-live="polite">
+      <img src="assets/logo-tuzz-logistica-empresarial-transparent.png" alt="Tuzz Logística" class="entry-logo">
+      <p class="entry-kicker">ACESSO AUTORIZADO</p>
+      <h2>Bem-vindo, <span id="entry-user"></span></h2>
+      <p class="entry-caption">Preparando seu painel de controle...</p>
+      <div class="entry-progress" aria-hidden="true"><span></span></div>
+    </div>
+  </div>
 
   <div id="toast" class="toast"></div>
   <script src="script.js"></script>

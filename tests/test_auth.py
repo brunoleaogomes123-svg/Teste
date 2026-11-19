@@ -88,6 +88,111 @@ class AuthenticationTests(unittest.TestCase):
         self.assertEqual(created.status_code, 201)
         self.assertEqual(created.json["role"], "user")
 
+    def test_chat_is_shared_by_authenticated_users(self):
+        self.assertEqual(self.client.get("/api/chat/messages").status_code, 401)
+        self.assertEqual(
+            self.client.post("/api/chat/messages", json={"body": "Olá"}).status_code,
+            401,
+        )
+
+        self.assertEqual(self.login().status_code, 200)
+        empty = self.client.post("/api/chat/messages", json={"body": "   "})
+        too_long = self.client.post(
+            "/api/chat/messages",
+            json={"body": "x" * (backend.MAX_CHAT_MESSAGE_LENGTH + 1)},
+        )
+        self.assertEqual(empty.status_code, 400)
+        self.assertEqual(too_long.status_code, 400)
+
+        sent = self.client.post(
+            "/api/chat/messages",
+            json={"body": "Mensagem do administrador"},
+        )
+        self.assertEqual(sent.status_code, 201)
+        self.client.post("/api/logout")
+
+        self.assertEqual(
+            self.login("worker", "worker-password-123").status_code,
+            200,
+        )
+        received = self.client.get("/api/chat/messages")
+        self.assertEqual(received.status_code, 200)
+        self.assertEqual(
+            received.json["messages"][0]["username"],
+            "admin",
+        )
+        self.assertEqual(
+            received.json["messages"][0]["body"],
+            "Mensagem do administrador",
+        )
+
+        worker_sent = self.client.post(
+            "/api/chat/messages",
+            json={"body": "Resposta do usuário"},
+        )
+        self.assertEqual(worker_sent.status_code, 201)
+        self.assertEqual(
+            self.client.get(
+                f"/api/chat/messages?after={sent.json['message']['id']}"
+            ).json["messages"][0]["body"],
+            "Resposta do usuário",
+        )
+
+    def test_chat_rejects_invalid_message_cursor(self):
+        self.assertEqual(self.login().status_code, 200)
+        response = self.client.get("/api/chat/messages?after=abc")
+        self.assertEqual(response.status_code, 400)
+
+    def test_chat_delete_permissions_for_author_and_admin(self):
+        self.assertEqual(
+            self.client.delete("/api/chat/messages/1").status_code,
+            401,
+        )
+        self.assertEqual(self.login().status_code, 200)
+        admin_message = self.client.post(
+            "/api/chat/messages",
+            json={"body": "Mensagem do administrador"},
+        ).json["message"]
+        self.client.post("/api/logout")
+
+        self.assertEqual(
+            self.login("worker", "worker-password-123").status_code,
+            200,
+        )
+        forbidden = self.client.delete(
+            f"/api/chat/messages/{admin_message['id']}"
+        )
+        self.assertEqual(forbidden.status_code, 403)
+
+        worker_message = self.client.post(
+            "/api/chat/messages",
+            json={"body": "Mensagem do usuário"},
+        ).json["message"]
+        deleted_by_author = self.client.delete(
+            f"/api/chat/messages/{worker_message['id']}"
+        )
+        self.assertEqual(deleted_by_author.status_code, 200)
+
+        moderated_message = self.client.post(
+            "/api/chat/messages",
+            json={"body": "Mensagem para moderação"},
+        ).json["message"]
+        self.client.post("/api/logout")
+
+        self.assertEqual(self.login().status_code, 200)
+        deleted_by_admin = self.client.delete(
+            f"/api/chat/messages/{moderated_message['id']}"
+        )
+        self.assertEqual(deleted_by_admin.status_code, 200)
+        self.assertEqual(
+            self.client.get("/api/chat/messages").json["messages"][0]["id"],
+            admin_message["id"],
+        )
+        missing = self.client.delete(
+            f"/api/chat/messages/{moderated_message['id']}"
+        )
+        self.assertEqual(missing.status_code, 404)
+
     def test_password_reset_expires_by_use_and_invalidates_sessions(self):
         self.assertEqual(self.login("worker", "worker-password-123").status_code, 200)
         with patch("app.send_reset_email") as send_email:

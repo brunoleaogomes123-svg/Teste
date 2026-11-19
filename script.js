@@ -4,6 +4,9 @@ const $ = s => document.querySelector(s);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
 let currentUser = null;
 let resetToken = new URLSearchParams(location.hash.slice(1)).get('reset');
+let chatInitialized = false;
+let chatPollTimer = null;
+let chatFetching = false;
 
 async function api(url, options = {}) {
   const method = (options.method || 'GET').toUpperCase();
@@ -29,12 +32,108 @@ function mensagem(id, texto, tipo = '') {
 }
 
 function mostrarLogin(tela = 'login') {
+  pararChat();
   currentUser = null;
+  chatInitialized = false;
   $('#app-shell').hidden = true;
   $('#login-screen').hidden = false;
   $('#login-panel').hidden = tela !== 'login';
   $('#forgot-screen').hidden = tela !== 'forgot';
   $('#reset-screen').hidden = tela !== 'reset';
+}
+
+function pararChat() {
+  if (chatPollTimer !== null) clearInterval(chatPollTimer);
+  chatPollTimer = null;
+}
+
+function mostrarMensagensChat(messages, inicial) {
+  const container = $('#chat-messages');
+  const estavaNoFim = container.scrollHeight - container.scrollTop - container.clientHeight < 60;
+  const visibleIds = new Set(messages.map(message => String(message.id)));
+  const existingItems = new Map();
+  container.querySelectorAll('.chat-message').forEach(item => {
+    if (!visibleIds.has(item.dataset.messageId)) item.remove();
+    else existingItems.set(item.dataset.messageId, item);
+  });
+  if (messages.length) container.querySelector('.chat-empty')?.remove();
+
+  messages.forEach((message, index) => {
+    const messageId = String(message.id);
+    if (existingItems.has(messageId)) return;
+    const item = document.createElement('article');
+    item.className = `chat-message${String(message.user_id) === String(currentUser.id) ? ' own' : ''}`;
+    item.dataset.messageId = messageId;
+    const header = document.createElement('header');
+    const username = document.createElement('strong');
+    username.textContent = message.username;
+    const timestamp = document.createElement('time');
+    timestamp.dateTime = message.created_at;
+    const date = new Date(message.created_at);
+    timestamp.textContent = Number.isNaN(date.getTime())
+      ? message.created_at
+      : date.toLocaleString('pt-BR');
+    header.append(username, timestamp);
+    if (currentUser.is_admin || String(message.user_id) === String(currentUser.id)) {
+      const deleteButton = document.createElement('button');
+      deleteButton.className = 'chat-delete';
+      deleteButton.type = 'button';
+      deleteButton.dataset.chatDelete = messageId;
+      deleteButton.setAttribute('aria-label', `Excluir mensagem de ${message.username}`);
+      deleteButton.textContent = 'Excluir';
+      header.append(deleteButton);
+    }
+    const body = document.createElement('p');
+    body.textContent = message.body;
+    item.append(header, body);
+    container.insertBefore(item, container.children[index] || null);
+  });
+
+  if (!messages.length) {
+    let empty = container.querySelector('.chat-empty');
+    if (!empty) {
+      empty = document.createElement('p');
+      empty.className = 'chat-empty';
+      container.append(empty);
+    }
+    empty.textContent = 'Ainda não há mensagens. Comece a conversa!';
+  } else if (estavaNoFim || inicial) {
+    container.scrollTop = container.scrollHeight;
+  }
+}
+
+async function carregarMensagensChat() {
+  if (chatFetching || !currentUser) return false;
+  chatFetching = true;
+  const inicial = !chatInitialized;
+  try {
+    const result = await api('/api/chat/messages');
+    if (!inicial) {
+      const visibleIds = new Set(result.messages.map(message => String(message.id)));
+      $('#chat-messages').querySelectorAll('.chat-message').forEach(message => {
+        if (!visibleIds.has(message.dataset.messageId)) message.remove();
+      });
+    }
+    mostrarMensagensChat(result.messages, inicial);
+    chatInitialized = true;
+    $('#chat-status').textContent = '';
+    $('#chat-status').classList.remove('error');
+    return true;
+  } catch (error) {
+    $('#chat-status').textContent = `Não foi possível carregar as mensagens: ${error.message}`;
+    $('#chat-status').classList.add('error');
+    return false;
+  } finally {
+    chatFetching = false;
+  }
+}
+
+function iniciarChat() {
+  if (!currentUser) return;
+  carregarMensagensChat();
+  if (chatPollTimer === null) {
+    chatPollTimer = setInterval(carregarMensagensChat, 3000);
+  }
 }
 
 async function mostrarApp(usuario, animarEntrada = false) {
@@ -276,6 +375,30 @@ document.querySelectorAll('.back-to-login').forEach(button => {
   });
 });
 
+$('#chat-form').addEventListener('submit', async e => {
+  e.preventDefault();
+  const button = $('#chat-send');
+  button.disabled = true;
+  $('#chat-status').textContent = 'Enviando mensagem...';
+  $('#chat-status').classList.remove('error');
+  try {
+    await api('/api/chat/messages', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({body: $('#chat-input').value})
+    });
+    $('#chat-input').value = '';
+    if (await carregarMensagensChat()) {
+      $('#chat-status').textContent = 'Mensagem enviada.';
+    }
+  } catch (error) {
+    $('#chat-status').textContent = error.message;
+    $('#chat-status').classList.add('error');
+  } finally {
+    button.disabled = false;
+  }
+});
+
 $('#forgot-form').addEventListener('submit', e => {
   e.preventDefault();
   mensagem('#forgot-message', 'Enviando solicitação...');
@@ -341,6 +464,8 @@ document.addEventListener('click', e => {
     if (b.dataset.tab === 'usuarios' && !currentUser?.is_admin) return;
     document.querySelectorAll('.side button').forEach(x => x.classList.toggle('on', x === b));
     document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x.id === b.dataset.tab));
+    if (b.dataset.tab === 'chat') iniciarChat();
+    else pararChat();
     if (b.dataset.tab === 'usuarios') {
       mensagem('#admin-message', 'Carregando usuários...');
       carregarUsuarios().then(() => mensagem('#admin-message', '')).catch(error => {
@@ -353,6 +478,27 @@ document.addEventListener('click', e => {
       $('#login-form').reset();
       mensagem('#login-message', 'Você saiu da sua conta.', 'success');
     }).catch(error => aviso(error.message));
+  } else if (b.dataset.chatDelete) {
+    const messageId = Number(b.dataset.chatDelete);
+    if (!Number.isSafeInteger(messageId) || messageId < 1
+      || !confirm('Excluir permanentemente esta mensagem?')) return;
+    b.disabled = true;
+    api(`/api/chat/messages/${messageId}`, {method: 'DELETE'}).then(() => {
+      $(`#chat-messages [data-message-id="${messageId}"]`)?.remove();
+      if (!$('#chat-messages').querySelector('.chat-message')) {
+        const empty = document.createElement('p');
+        empty.className = 'chat-empty';
+        empty.textContent = 'Ainda não há mensagens. Comece a conversa!';
+        $('#chat-messages').replaceChildren(empty);
+      }
+      $('#chat-status').textContent = 'Mensagem excluída.';
+      $('#chat-status').classList.remove('error');
+    }).catch(error => {
+      $('#chat-status').textContent = error.message;
+      $('#chat-status').classList.add('error');
+    }).finally(() => {
+      b.disabled = false;
+    });
   } else if (b.dataset.del) {
     const p = achar(+b.dataset.del);
     if (p && confirm(`Excluir ${p.sku}?`)) { db.produtos = db.produtos.filter(x => x !== p); render(); aviso('Produto excluído.'); }

@@ -67,6 +67,7 @@
       <button data-tab="estoque">Estoque</button>
       <button data-tab="mov">Movimentações</button>
       <button data-tab="acur">Acuracidade</button>
+      <button data-tab="chat">Chat</button>
       <button id="tab-usuarios" data-tab="usuarios" hidden>Usuários (ADM)</button>
       <div class="user-session">
         <span id="session-user"></span>
@@ -140,6 +141,20 @@
       <div class="wrap"><table><thead><tr><th>Código</th><th>Descrição</th><th>Endereço</th><th>Saldo (sistema)</th><th>Físico</th><th>Divergência</th><th>Acurac.</th><th>Status</th><th></th></tr></thead><tbody id="t-acur"></tbody></table></div>
       <h2>Histórico de ajustes</h2>
       <div class="wrap"><table><thead><tr><th>Data</th><th>Código</th><th>Ajuste</th><th>Detalhe</th></tr></thead><tbody id="t-ajustes"></tbody></table></div>
+    </section>
+
+    <section id="chat" class="tab">
+      <h1>Chat da equipe</h1>
+      <p class="mu">Conversa compartilhada entre os usuários com acesso ao sistema.</p>
+      <div id="chat-messages" class="chat-messages" role="log" aria-live="polite" aria-relevant="additions text">
+        <p class="chat-empty">Carregando mensagens...</p>
+      </div>
+      <p id="chat-status" class="chat-status" role="status" aria-live="polite"></p>
+      <form id="chat-form" class="chat-form">
+        <label class="sr-only" for="chat-input">Sua mensagem</label>
+        <textarea id="chat-input" maxlength="1000" rows="2" placeholder="Escreva uma mensagem..." required></textarea>
+        <button id="chat-send" class="btn" type="submit">Enviar</button>
+      </form>
     </section>
 
     <section id="usuarios" class="tab">

@@ -18,6 +18,15 @@ Abra `http://127.0.0.1:5000`. A primeira execução cria o banco SQLite em
 use uma senha forte e não a compartilhe. O ADM cria as demais contas pela aba
 **Usuários (ADM)** depois de entrar.
 
+O chat da equipe usa PHP CLI 8.0 ou superior com PDO SQLite. Deixe `php` no
+`PATH`; se necessário, defina `PHP_EXECUTABLE` com o caminho do executável e
+`PHP_EXTENSION_DIR` com a pasta das extensões `sqlite3` e `pdo_sqlite`. No
+Windows, quando o driver não estiver habilitado no `php.ini`, configure:
+
+```powershell
+$env:PHP_EXTENSION_DIR = Join-Path (Split-Path (Get-Command php).Source) "ext"
+```
+
 O segredo definido em `SECRET_KEY` deve ser mantido em ambiente seguro e
 reutilizado após reiniciar o servidor. Não o coloque no código nem o envie ao
 Git. Para produção, use HTTPS, defina `COOKIE_SECURE=true` e execute com um
@@ -45,6 +54,11 @@ $env:SMTP_USE_TLS = "true"
 Use a senha de aplicativo fornecida pelo serviço de e-mail quando disponível.
 O link de redefinição expira em 30 minutos e só pode ser usado uma vez. Sem a
 configuração SMTP, o servidor informa que a recuperação não está disponível.
+
+Usuários autenticados podem trocar mensagens no **Chat da equipe**. As mensagens
+ficam salvas no banco SQLite do servidor e são atualizadas automaticamente
+enquanto a aba do chat estiver aberta. Cada usuário pode excluir as próprias
+mensagens; o ADM também pode excluir mensagens de outros usuários.
 
 As contas e sessões são verificadas pelo servidor Python. Os dados do estoque
 continuam usando o armazenamento local do navegador, como antes; eles ainda não

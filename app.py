@@ -1,4 +1,5 @@
 import hashlib
+import json
 import logging
 import os
 import re
@@ -6,6 +7,7 @@ import secrets
 import smtplib
 import sqlite3
 import ssl
+import subprocess
 from datetime import datetime, timedelta, timezone
 from email.message import EmailMessage
 from functools import wraps
@@ -31,6 +33,7 @@ USERNAME_PATTERN = re.compile(r"^[A-Za-z0-9._-]{3,32}$")
 EMAIL_PATTERN = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 PASSWORD_MIN_LENGTH = 12
 RESET_TOKEN_LIFETIME = timedelta(minutes=30)
+MAX_CHAT_MESSAGE_LENGTH = 1000
 
 
 class User(UserMixin):
@@ -88,6 +91,12 @@ def initialize_db(app):
                 token_hash TEXT NOT NULL UNIQUE,
                 expires_at TEXT NOT NULL,
                 used_at TEXT
+            );
+            CREATE TABLE IF NOT EXISTS chat_messages (
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                body TEXT NOT NULL CHECK (length(body) BETWEEN 1 AND 1000),
+                created_at TEXT NOT NULL
             );
             """
         )
@@ -155,6 +164,8 @@ def create_app(test_config=None):
             "DATABASE_PATH",
             os.path.join(app.instance_path, "acuracidade.sqlite3"),
         ),
+        PHP_EXECUTABLE=os.environ.get("PHP_EXECUTABLE", "php"),
+        PHP_EXTENSION_DIR=os.environ.get("PHP_EXTENSION_DIR", ""),
         SMTP_HOST=os.environ.get("SMTP_HOST", ""),
         SMTP_PORT=int(os.environ.get("SMTP_PORT", "587")),
         SMTP_USERNAME=os.environ.get("SMTP_USERNAME", ""),
@@ -333,6 +344,107 @@ def create_app(test_config=None):
         except sqlite3.IntegrityError:
             return jsonify(error="Esse usuário ou e-mail já está cadastrado."), 409
         return jsonify(id=cursor.lastrowid, username=username.strip(), email=email, role="user"), 201
+
+    def chat_php_response(payload):
+        environment = os.environ.copy()
+        environment["CHAT_DATABASE_PATH"] = os.path.abspath(app.config["DATABASE"])
+        php_command = [app.config["PHP_EXECUTABLE"]]
+        if app.config["PHP_EXTENSION_DIR"]:
+            php_command.extend(
+                [
+                    "-d",
+                    f"extension_dir={app.config['PHP_EXTENSION_DIR']}",
+                    "-d",
+                    "extension=sqlite3",
+                    "-d",
+                    "extension=pdo_sqlite",
+                ]
+            )
+        php_command.append(os.path.join(app.root_path, "chat.php"))
+        try:
+            result = subprocess.run(
+                php_command,
+                input=json.dumps(payload, ensure_ascii=False),
+                capture_output=True,
+                check=False,
+                encoding="utf-8",
+                env=environment,
+                timeout=10,
+            )
+        except FileNotFoundError:
+            app.logger.error("PHP CLI não encontrado para atender o chat.")
+            return jsonify(error="O PHP CLI é necessário para usar o chat."), 503
+        except subprocess.TimeoutExpired:
+            app.logger.error("O processamento PHP do chat excedeu o tempo limite.")
+            return jsonify(error="O chat demorou demais para responder. Tente novamente."), 504
+
+        if result.returncode != 0:
+            app.logger.error("Falha no PHP do chat: %s", result.stderr[-2000:])
+            return jsonify(error="Não foi possível processar o chat agora."), 502
+        try:
+            response = json.loads(result.stdout)
+        except json.JSONDecodeError:
+            app.logger.error("O PHP do chat retornou uma resposta inválida.")
+            return jsonify(error="O serviço de chat retornou uma resposta inválida."), 502
+        if not isinstance(response, dict) or not isinstance(response.get("status"), int):
+            app.logger.error("O PHP do chat retornou um formato inválido.")
+            return jsonify(error="O serviço de chat retornou uma resposta inválida."), 502
+        status = response.pop("status")
+        return jsonify(response), status
+
+    @app.get("/api/chat/messages")
+    @login_required
+    def list_chat_messages():
+        after = request.args.get("after")
+        if after is not None:
+            if not after.isascii() or not after.isdecimal() or len(after) > 19:
+                return jsonify(error="O marcador de mensagens é inválido."), 400
+            after_id = int(after)
+            if after_id > 9223372036854775807:
+                return jsonify(error="O marcador de mensagens é inválido."), 400
+            after = str(after_id)
+        return chat_php_response(
+            {
+                "action": "list",
+                "after": after,
+            }
+        )
+
+    @app.delete("/api/chat/messages/<int:message_id>")
+    @limiter.limit("30 per minute")
+    @login_required
+    def delete_chat_message(message_id):
+        return chat_php_response(
+            {
+                "action": "delete",
+                "message_id": message_id,
+                "user_id": int(current_user.id),
+                "is_admin": current_user.is_admin,
+            }
+        )
+
+    @app.post("/api/chat/messages")
+    @limiter.limit("30 per minute")
+    @login_required
+    def send_chat_message():
+        payload = json_payload()
+        body = payload.get("body")
+        if not isinstance(body, str):
+            return jsonify(error="Escreva uma mensagem antes de enviar."), 400
+        body = body.strip()
+        if not body:
+            return jsonify(error="A mensagem não pode ficar vazia."), 400
+        if len(body) > MAX_CHAT_MESSAGE_LENGTH:
+            return jsonify(
+                error=f"A mensagem deve ter no máximo {MAX_CHAT_MESSAGE_LENGTH} caracteres."
+            ), 400
+        return chat_php_response(
+            {
+                "action": "send",
+                "body": body,
+                "user_id": int(current_user.id),
+            }
+        )
 
     @app.post("/api/password-reset/request")
     @limiter.limit("3 per hour")
